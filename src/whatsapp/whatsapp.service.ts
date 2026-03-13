@@ -1,105 +1,113 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import { EventEmitter } from 'events';
-
-// whatsapp-web.js is loaded dynamically to avoid issues in environments without Chrome
-let Client: any, LocalAuth: any, MessageMedia: any;
-try {
-  const wwebjs = require('whatsapp-web.js');
-  Client = wwebjs.Client;
-  LocalAuth = wwebjs.LocalAuth;
-  MessageMedia = wwebjs.MessageMedia;
-} catch (e) {
-  // whatsapp-web.js not available
-}
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 
 @Injectable()
-export class WhatsAppService extends EventEmitter implements OnModuleInit {
-  private client: any = null;
+export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
-  public isReady = false;
-  public qrCode: string | null = null;
+  private readonly apiUrl: string;
+  private readonly token: string;
+  private readonly phoneNumberId: string;
 
-  async onModuleInit() {
-    if (!Client) {
-      this.logger.warn('whatsapp-web.js not loaded. WhatsApp features disabled.');
-      return;
-    }
-    this.initClient();
+  constructor(private config: ConfigService) {
+    this.token = this.config.get('WHATSAPP_ACCESS_TOKEN') || '';
+    this.phoneNumberId = this.config.get('WHATSAPP_PHONE_NUMBER_ID') || '';
+    this.apiUrl = `https://graph.facebook.com/v19.0/${this.phoneNumberId}`;
   }
 
-  private initClient() {
-    this.client = new Client({
-      authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
-      puppeteer: {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-        ],
+  // ─── Send greeting text message ─────────────────────────────────────────────
+  private async sendTextMessage(to: string, text: string): Promise<void> {
+    await axios.post(
+      `${this.apiUrl}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: text },
       },
-    });
-
-    this.client.on('qr', (qr: string) => {
-      this.qrCode = qr;
-      this.isReady = false;
-      this.logger.log('QR Code generated. Scan with WhatsApp.');
-      this.emit('qr', qr);
-    });
-
-    this.client.on('ready', () => {
-      this.isReady = true;
-      this.qrCode = null;
-      this.logger.log('✅ WhatsApp client is ready!');
-      this.emit('ready');
-    });
-
-    this.client.on('disconnected', () => {
-      this.isReady = false;
-      this.logger.warn('WhatsApp disconnected. Re-initializing...');
-      setTimeout(() => this.initClient(), 5000);
-    });
-
-    this.client.initialize().catch((err: any) => {
-      this.logger.error('WhatsApp init error:', err.message);
-    });
+      {
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
   }
 
-  async sendPdf(mobileNumber: string, pdfPath: string, donorName: string, receiptNumber: string): Promise<boolean> {
-    if (!this.client || !this.isReady) {
-      throw new Error('WhatsApp client is not ready. Please scan the QR code first.');
+  // ─── Send PDF via Cloudinary URL (link = hosted on Cloudinary) ──────────────
+  private async sendDocumentByUrl(
+    to: string,
+    pdfUrl: string,
+    filename: string,
+    caption: string,
+  ): Promise<void> {
+    await axios.post(
+      `${this.apiUrl}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'document',
+        document: {
+          link: pdfUrl,      // Meta fetches the PDF directly from Cloudinary URL
+          filename,
+          caption,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+  }
+
+  // ─── Main: send receipt to donor's WhatsApp ──────────────────────────────────
+  // receiptUrl is the Cloudinary URL stored in DB (e.g. https://res.cloudinary.com/...)
+  async sendReceiptPdf(
+    mobileNumber: string,
+    receiptUrl: string,           // Cloudinary URL — no file path needed
+    donorName: string,
+    receiptNumber: string,
+    amount: number,
+    donationType: string,
+  ): Promise<void> {
+    const to = this.normalizeNumber(mobileNumber);
+
+    try {
+      // 1. Send Islamic greeting text
+      const greeting =
+        `Assalamu Alaikum wa Rahmatullahi wa Barakatuh 🌙\n\n` +
+        `Dear *${donorName}*,\n\n` +
+        `JazakAllah Khair for your generous *${donationType}* donation of *₹${Number(amount).toLocaleString('en-IN')}*.\n\n` +
+        `Please find your official receipt attached below.\n\n` +
+        `🤲 May Allah accept your Sadaqah and bless you abundantly.\n\n` +
+        `— Noori Donation Centre`;
+
+      await this.sendTextMessage(to, greeting);
+
+      // 2. Send PDF document using Cloudinary URL directly
+      await this.sendDocumentByUrl(
+        to,
+        receiptUrl,
+        `${receiptNumber}.pdf`,
+        `Official Receipt — ${receiptNumber}`,
+      );
+
+      this.logger.log(`✅ Receipt ${receiptNumber} sent to ${to} via Cloudinary URL`);
+    } catch (error: any) {
+      const msg = error?.response?.data?.error?.message || error.message;
+      this.logger.error(`Failed to send WhatsApp to ${to}: ${msg}`);
+      throw new InternalServerErrorException(`WhatsApp send failed: ${msg}`);
     }
-
-    // Format number: remove spaces, dashes; add country code if needed
-    let number = mobileNumber.replace(/[\s\-\(\)]/g, '');
-    if (!number.startsWith('+')) {
-      // Default to India +91 — change as needed
-      number = `+91${number.replace(/^0/, '')}`;
-    }
-    const chatId = `${number.replace('+', '')}@c.us`;
-
-    const fs = require('fs');
-    const media = MessageMedia.fromFilePath(pdfPath);
-
-    const greeting = `Assalamu Alaikum wa Rahmatullahi wa Barakatuh 🌙\n\nDear *${donorName}*,\n\nJazakAllah Khair for your generous donation. Please find your official receipt attached.\n\n📄 *Receipt:* ${receiptNumber}\n\nMay Allah accept your Sadaqah and bless you abundantly. 🤲\n\n— Noori Donation Centre`;
-
-    await this.client.sendMessage(chatId, greeting);
-    await this.client.sendMessage(chatId, media, {
-      caption: `Receipt ${receiptNumber}.pdf`,
-    });
-
-    return true;
   }
 
-  getStatus() {
-    return {
-      isReady: this.isReady,
-      hasQr: !!this.qrCode,
-    };
-  }
-
-  getQr() {
-    return this.qrCode;
+  // ─── Normalize to E.164 without leading + (Meta API format) ─────────────────
+  private normalizeNumber(mobile: string): string {
+    let num = mobile.replace(/[\s\-\(\)]/g, '');
+    if (num.startsWith('+')) return num.replace('+', '');
+    num = num.replace(/^0/, '');
+    if (num.length === 10) return `91${num}`; // default India +91
+    return num;
   }
 }

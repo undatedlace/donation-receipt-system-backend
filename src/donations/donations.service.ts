@@ -66,6 +66,12 @@ export class DonationsService {
     return donation;
   }
 
+  async findByReceiptNumber(receiptNumber: string): Promise<DonationDocument> {
+    const donation = await this.donationModel.findOne({ receiptNumber });
+    if (!donation) throw new NotFoundException('Donation not found');
+    return donation;
+  }
+
   async updateReceiptUrl(id: string, receiptUrl: string): Promise<DonationDocument> {
     const result = await this.donationModel.findByIdAndUpdate(id, { receiptUrl }, { new: true });
     if (!result) throw new NotFoundException('Donation not found');

@@ -1,10 +1,7 @@
-import { Controller, Get, Post, Param, UseGuards, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import { Controller, Post, Param, UseGuards, NotFoundException, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { WhatsAppService } from './whatsapp.service';
 import { DonationsService } from '../donations/donations.service';
-import * as QRCode from 'qrcode';
-import * as path from 'path';
 
 @Controller('whatsapp')
 @UseGuards(JwtAuthGuard)
@@ -14,41 +11,33 @@ export class WhatsAppController {
     private donationsService: DonationsService,
   ) {}
 
-  @Get('status')
-  getStatus() {
-    return this.whatsappService.getStatus();
-  }
-
-  @Get('qr')
-  async getQrCode(@Res() res: Response) {
-    const qr = this.whatsappService.getQr();
-    if (!qr) {
-      return res.json({ message: 'No QR available. Client may already be connected.' });
-    }
-    // Return as base64 PNG image
-    const qrImage = await QRCode.toDataURL(qr);
-    return res.json({ qr: qrImage });
-  }
-
   @Post('send/:donationId')
   async sendReceipt(@Param('donationId') donationId: string) {
     const donation = await this.donationsService.findOne(donationId);
 
     if (!donation.receiptNumber) {
-      throw new Error('Receipt not generated yet. Generate receipt first.');
+      throw new BadRequestException('Receipt not generated yet. Call POST /receipts/generate/:id first.');
     }
 
-    const pdfPath = path.join(process.cwd(), 'receipts', `${donation.receiptNumber}.pdf`);
+    if (!donation.receiptUrl) {
+      throw new BadRequestException('Receipt URL missing. Regenerate the receipt first.');
+    }
 
-    await this.whatsappService.sendPdf(
+    // Pass the Cloudinary URL directly — no local file needed
+    await this.whatsappService.sendReceiptPdf(
       donation.mobileNumber,
-      pdfPath,
+      donation.receiptUrl,         // Cloudinary URL from DB
       donation.donorName,
       donation.receiptNumber,
+      donation.amount,
+      donation.donationType,
     );
 
     await this.donationsService.markWhatsAppSent(donationId);
 
-    return { success: true, message: `Receipt sent to ${donation.mobileNumber}` };
+    return {
+      success: true,
+      message: `Receipt ${donation.receiptNumber} sent to ${donation.mobileNumber}`,
+    };
   }
 }
