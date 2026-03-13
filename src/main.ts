@@ -30,6 +30,9 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
+  app.use('/health', (req: any, res: any) => {
+    res.status(200).json({ status: 'ok' });
+  });
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Donation Receipt System')
     .setDescription('REST API for managing donations, receipts, users, and WhatsApp notifications')
