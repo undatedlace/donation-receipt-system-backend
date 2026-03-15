@@ -1,113 +1,72 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import twilio from 'twilio';
 
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
-  private readonly apiUrl: string;
-  private readonly token: string;
-  private readonly phoneNumberId: string;
+  private readonly client: ReturnType<typeof twilio>;
+  private readonly from: string;
 
   constructor(private config: ConfigService) {
-    this.token = this.config.get('WHATSAPP_ACCESS_TOKEN') || '';
-    this.phoneNumberId = this.config.get('WHATSAPP_PHONE_NUMBER_ID') || '';
-    this.apiUrl = `https://graph.facebook.com/v19.0/${this.phoneNumberId}`;
+    const accountSid = this.config.getOrThrow<string>('TWILIO_ACCOUNT_SID');
+    const authToken  = this.config.getOrThrow<string>('TWILIO_AUTH_TOKEN');
+    this.from        = this.config.getOrThrow<string>('TWILIO_WHATSAPP_NUMBER'); // e.g. whatsapp:+14155238886
+    this.client      = twilio(accountSid, authToken);
   }
 
-  // ─── Send greeting text message ─────────────────────────────────────────────
-  private async sendTextMessage(to: string, text: string): Promise<void> {
-    await axios.post(
-      `${this.apiUrl}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'text',
-        text: { body: text },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    );
-  }
-
-  // ─── Send PDF via Cloudinary URL (link = hosted on Cloudinary) ──────────────
-  private async sendDocumentByUrl(
-    to: string,
-    pdfUrl: string,
-    filename: string,
-    caption: string,
-  ): Promise<void> {
-    await axios.post(
-      `${this.apiUrl}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'document',
-        document: {
-          link: pdfUrl,      // Meta fetches the PDF directly from Cloudinary URL
-          filename,
-          caption,
-        },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    );
-  }
-
-  // ─── Main: send receipt to donor's WhatsApp ──────────────────────────────────
-  // receiptUrl is the Cloudinary URL stored in DB (e.g. https://res.cloudinary.com/...)
+  // ─── Main: send receipt to donor's WhatsApp ─────────────────────────────────
   async sendReceiptPdf(
     mobileNumber: string,
-    receiptUrl: string,           // Cloudinary URL — no file path needed
+    receiptUrl: string,     // Public S3 / Render URL
     donorName: string,
     receiptNumber: string,
     amount: number,
     donationType: string,
-  ): Promise<void> {
-    const to = this.normalizeNumber(mobileNumber);
+  ): Promise<{ success: boolean; error?: string }> {
+    const to = this.toWhatsApp(mobileNumber);
 
     try {
-      // 1. Send Islamic greeting text
       const greeting =
         `Assalamu Alaikum wa Rahmatullahi wa Barakatuh 🌙\n\n` +
         `Dear *${donorName}*,\n\n` +
         `JazakAllah Khair for your generous *${donationType}* donation of *₹${Number(amount).toLocaleString('en-IN')}*.\n\n` +
-        `Please find your official receipt attached below.\n\n` +
-        `🤲 May Allah accept your Sadaqah and bless you abundantly.\n\n` +
-        `— Noori Donation Centre`;
+        `SDI Education Centre is grateful for your contribution. 🤲\n\n` +
+        `Your official receipt is attached below.\n\n` +
+        `May Allah accept your Sadaqah and bless you and your family abundantly.\n\n` +
+        `— SDI Education Centre`;
 
-      await this.sendTextMessage(to, greeting);
-
-      // 2. Send PDF document using Cloudinary URL directly
-      await this.sendDocumentByUrl(
+      // 1. Greeting text message
+      await this.client.messages.create({
+        from: this.from,
         to,
-        receiptUrl,
-        `${receiptNumber}.pdf`,
-        `Official Receipt — ${receiptNumber}`,
-      );
+        body: greeting,
+      });
 
-      this.logger.log(`✅ Receipt ${receiptNumber} sent to ${to} via Cloudinary URL`);
+      // 2. PDF as media message
+      await this.client.messages.create({
+        from: this.from,
+        to,
+        body: `📄 Receipt *${receiptNumber}*`,
+        mediaUrl: [receiptUrl],
+      });
+
+      this.logger.log(`✅ Receipt ${receiptNumber} sent to ${to} via Twilio`);
+      return { success: true };
     } catch (error: any) {
-      const msg = error?.response?.data?.error?.message || error.message;
+      const msg: string = error?.message ?? 'Unknown Twilio error';
       this.logger.error(`Failed to send WhatsApp to ${to}: ${msg}`);
-      throw new InternalServerErrorException(`WhatsApp send failed: ${msg}`);
+      return { success: false, error: msg };
     }
   }
 
-  // ─── Normalize to E.164 without leading + (Meta API format) ─────────────────
-  private normalizeNumber(mobile: string): string {
+  // ─── Normalize to Twilio WhatsApp format: whatsapp:+91XXXXXXXXXX ─────────────
+  private toWhatsApp(mobile: string): string {
     let num = mobile.replace(/[\s\-\(\)]/g, '');
-    if (num.startsWith('+')) return num.replace('+', '');
+    if (num.startsWith('whatsapp:')) return num;
+    if (num.startsWith('+')) return `whatsapp:${num}`;
     num = num.replace(/^0/, '');
-    if (num.length === 10) return `91${num}`; // default India +91
-    return num;
+    if (num.length === 10) num = `91${num}`;  // default India +91
+    return `whatsapp:+${num}`;
   }
 }
