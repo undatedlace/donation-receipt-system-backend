@@ -1,123 +1,94 @@
+// ─── ACTIVE PROVIDER: Twilio ──────────────────────────────────────────────────
+// To switch to Meta WhatsApp Cloud API:
+//   1. Open whatsapp.module.ts
+//   2. Replace WhatsAppService with WhatsAppMetaService (see comments there)
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosError } from 'axios';
+import twilio from 'twilio';
 
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
-  private readonly phoneNumberId: string;
-  private readonly accessToken: string;
-  private readonly apiVersion: string;
+  private readonly client: ReturnType<typeof twilio>;
+  private readonly from: string;
 
   constructor(private readonly config: ConfigService) {
-    this.phoneNumberId = this.config.getOrThrow<string>('PHONE_NUMBER_ID');
-    this.accessToken   = this.config.getOrThrow<string>('META_ACCESS_TOKEN');
-    this.apiVersion    = this.config.get<string>('META_API_VERSION', 'v19.0');
+    const accountSid = this.config.getOrThrow<string>('TWILIO_ACCOUNT_SID');
+    const authToken  = this.config.getOrThrow<string>('TWILIO_AUTH_TOKEN');
+    this.from        = this.config.getOrThrow<string>('TWILIO_WHATSAPP_NUMBER'); // e.g. whatsapp:+14155238886
+    this.client      = twilio(accountSid, authToken);
   }
 
-  // ─── Main: send receipt PDF to donor's WhatsApp ──────────────────────────────
+  // ─── Main: send receipt to donor's WhatsApp ───────────────────────────────────
   async sendReceiptPdf(
     mobileNumber: string,
-    pdfUrl: string,
+    receiptUrl: string,
     donorName: string,
     receiptNumber: string,
     amount: number,
-  ): Promise<{ success: boolean; messageId?: string; recipientNumber?: string; error?: string }> {
-    const to = this.formatNumber(mobileNumber);
+    donationType: string,
+  ): Promise<{ success: boolean; recipientNumber?: string; error?: string }> {
+    const to = this.toWhatsApp(mobileNumber);
 
     try {
-      const textBody =
-        `Assalamualaikum ${donorName}! 🌙\n\n` +
-        `Jazakallah Khair for your generous donation to *SDI Education Centre*.\n\n` +
-        `🧾 Receipt No: ${receiptNumber}\n` +
-        `💰 Amount: Rs.${Number(amount).toLocaleString('en-IN')}\n\n` +
-        `Your official receipt is attached below.\n` +
-        `May Allah (SWT) accept your contribution. 🤲 Aameen`;
+      const greeting =
+        `Assalamu Alaikum wa Rahmatullahi wa Barakatuh 🌙\n\n` +
+        `Dear *${donorName}*,\n\n` +
+        `JazakAllah Khair for your generous *${donationType}* donation of *₹${Number(amount).toLocaleString('en-IN')}*.\n\n` +
+        `SDI Education Centre is grateful for your contribution. 🤲\n\n` +
+        `Your official receipt is attached below.\n\n` +
+        `May Allah accept your Sadaqah and bless you and your family abundantly.\n\n` +
+        `— SDI Education Centre`;
 
       // Message 1 — greeting text
-      await this.postToMeta({
-        messaging_product: 'whatsapp',
+      await this.client.messages.create({ from: this.from, to, body: greeting });
+
+      // Message 2 — PDF as media
+      await this.client.messages.create({
+        from: this.from,
         to,
-        type: 'text',
-        text: { body: textBody },
+        body: `📄 Receipt *${receiptNumber}*`,
+        mediaUrl: [receiptUrl],
       });
 
-      // Message 2 — PDF document
-      const docResponse = await this.postToMeta({
-        messaging_product: 'whatsapp',
-        to,
-        type: 'document',
-        document: {
-          link: pdfUrl,
-          filename: `${receiptNumber}.pdf`,
-          caption: `Donation Receipt - ${receiptNumber}`,
-        },
-      });
-
-      const messageId: string = docResponse?.messages?.[0]?.id ?? 'unknown';
-      this.logger.log(`✅ Receipt ${receiptNumber} sent to ${to} via Meta Cloud API (msgId: ${messageId})`);
-      return { success: true, messageId, recipientNumber: to };
+      this.logger.log(`✅ Receipt ${receiptNumber} sent to ${to} via Twilio`);
+      return { success: true, recipientNumber: to };
     } catch (error: any) {
-      const msg = this.extractError(error);
+      const msg: string = error?.message ?? 'Unknown Twilio error';
       this.logger.error(`Failed to send WhatsApp to ${to}: ${msg}`);
       return { success: false, error: msg };
     }
   }
 
-  // ─── Send a simple verification text (test endpoint) ─────────────────────────
+  // ─── Send a simple test message ───────────────────────────────────────────────
   async sendTestMessage(
     mobileNumber: string,
-  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const to = this.formatNumber(mobileNumber);
+  ): Promise<{ success: boolean; error?: string }> {
+    const to = this.toWhatsApp(mobileNumber);
     try {
-      const response = await this.postToMeta({
-        messaging_product: 'whatsapp',
+      await this.client.messages.create({
+        from: this.from,
         to,
-        type: 'text',
-        text: { body: 'Hello from SDI Education Centre! 👋 WhatsApp connection test successful.' },
+        body: 'Hello from SDI Education Centre! 👋 WhatsApp connection test successful.',
       });
-      const messageId: string = response?.messages?.[0]?.id ?? 'unknown';
-      this.logger.log(`✅ Test message sent to ${to} (msgId: ${messageId})`);
-      return { success: true, messageId };
+      this.logger.log(`✅ Test message sent to ${to} via Twilio`);
+      return { success: true };
     } catch (error: any) {
-      const msg = this.extractError(error);
+      const msg: string = error?.message ?? 'Unknown Twilio error';
       this.logger.error(`Test message failed for ${to}: ${msg}`);
       return { success: false, error: msg };
     }
   }
 
-  // ─── POST to Meta Graph API ───────────────────────────────────────────────────
-  private async postToMeta(payload: Record<string, unknown>): Promise<any> {
-    const url = `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`;
-    const { data } = await axios.post(url, payload, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    return data;
-  }
-
-  // ─── Normalize to Meta format: 91XXXXXXXXXX ──────────────────────────────────
-  private formatNumber(mobile: string): string {
-    let num = mobile.replace(/\D/g, '');   // strip all non-digits
-    num = num.replace(/^0/, '');           // remove leading 0
-    if (!num.startsWith('91') || num.length < 12) {
-      if (num.length === 10) num = `91${num}`;
-    }
-    return num;
-  }
-
-  // ─── Extract readable error from Axios / Meta response ───────────────────────
-  private extractError(error: unknown): string {
-    if (error instanceof AxiosError) {
-      const metaError = error.response?.data?.error;
-      if (metaError) {
-        this.logger.error('Meta API error response:', JSON.stringify(metaError));
-        return metaError.message ?? JSON.stringify(metaError);
-      }
-      return error.message;
-    }
-    return (error as any)?.message ?? 'Unknown error';
+  // ─── Normalize to Twilio WhatsApp format: whatsapp:+91XXXXXXXXXX ──────────────
+  private toWhatsApp(mobile: string): string {
+    let num = mobile.replace(/[\s\-\(\)]/g, '');
+    if (num.startsWith('whatsapp:')) return num;
+    if (num.startsWith('+')) return `whatsapp:${num}`;
+    num = num.replace(/^0/, '');
+    if (num.length === 10) num = `91${num}`;
+    return `whatsapp:+${num}`;
   }
 }

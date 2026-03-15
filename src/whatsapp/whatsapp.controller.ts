@@ -8,7 +8,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { WhatsAppService } from './whatsapp.service';
 import { DonationsService } from '../donations/donations.service';
@@ -23,26 +22,21 @@ export class WhatsAppController {
     private readonly whatsappService: WhatsAppService,
     private readonly donationsService: DonationsService,
     private readonly receiptsService: ReceiptsService,
-    private readonly config: ConfigService,
   ) {}
 
-  // ─── GET /whatsapp/status ────────────────────────────────────────────────────
+  // ─── GET /whatsapp/status ─────────────────────────────────────────────────────
   @Get('status')
-  @ApiOperation({ summary: 'Check Meta WhatsApp Cloud API connection status' })
-  @ApiResponse({ status: 200, description: 'Returns provider info and configured phone number ID' })
+  @ApiOperation({ summary: 'Check WhatsApp connection status' })
+  @ApiResponse({ status: 200, description: 'Returns provider info' })
   getStatus() {
-    return {
-      connected: true,
-      provider: 'Meta Cloud API',
-      phoneNumberId: this.config.get<string>('PHONE_NUMBER_ID'),
-    };
+    return { connected: true, provider: 'Twilio' };
   }
 
-  // ─── POST /whatsapp/send/:donationId ────────────────────────────────────────
+  // ─── POST /whatsapp/send/:donationId ──────────────────────────────────────────
   @Post('send/:donationId')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Generate (if needed) and send receipt PDF via Meta WhatsApp' })
+  @ApiOperation({ summary: 'Generate (if needed) and send receipt PDF via WhatsApp' })
   @ApiParam({ name: 'donationId', description: 'MongoDB ObjectId of the donation' })
   @ApiResponse({ status: 200, description: '{ success, receiptUrl, whatsappSent, recipientNumber }' })
   async sendReceipt(@Param('donationId') donationId: string) {
@@ -63,13 +57,14 @@ export class WhatsAppController {
       await this.donationsService.updateReceiptUrl(donationId, receiptUrl);
     }
 
-    // 3. Send via Meta WhatsApp Cloud API
+    // 3. Send via Twilio
     const result = await this.whatsappService.sendReceiptPdf(
       donation.mobileNumber,
       receiptUrl,
       donation.donorName,
       donation.receiptNumber,
       donation.amount,
+      donation.donationType,
     );
 
     if (!result.success) {
@@ -87,13 +82,13 @@ export class WhatsAppController {
     };
   }
 
-  // ─── GET /whatsapp/test/:mobileNumber ───────────────────────────────────────
+  // ─── GET /whatsapp/test/:mobileNumber ─────────────────────────────────────────
   @Get('test/:mobileNumber')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Send a test text message to verify Meta API connection' })
+  @ApiOperation({ summary: 'Send a test text message to verify connection' })
   @ApiParam({ name: 'mobileNumber', description: 'Mobile number to test (e.g. 9876543210)' })
-  @ApiResponse({ status: 200, description: '{ success, messageId } or { success: false, error }' })
+  @ApiResponse({ status: 200, description: '{ success } or { success: false, error }' })
   async testConnection(@Param('mobileNumber') mobileNumber: string) {
     return this.whatsappService.sendTestMessage(mobileNumber);
   }
