@@ -1,8 +1,9 @@
 import {
   Controller, Get, Post, Delete, Body, Param, Query,
-  UseGuards, Request, Res, Header,
+  UseGuards, Request, Res, Header, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DonationsService } from './donations.service';
@@ -75,5 +76,17 @@ export class DonationsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   delete(@Param('id') id: string) {
     return this.donationsService.delete(id);
+  }
+
+  // ─── POST /donations/upload-qr ─────────────────────────────────────────────────
+  @Post('upload-qr')
+  @ApiOperation({ summary: 'Upload a QR payment screenshot to S3 and get back the URL' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiResponse({ status: 201, description: '{ url: "https://..." }' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadQrImage(@UploadedFile() file: Express.Multer.File) {
+    const url = await this.donationsService.uploadQrImageToS3(file);
+    return { url };
   }
 }

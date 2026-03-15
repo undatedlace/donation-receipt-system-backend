@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Donation, DonationDocument } from './donation.schema';
 import { CreateDonationDto } from './donation.dto';
 
@@ -95,5 +96,31 @@ export class DonationsService {
 
   async exportAll() {
     return this.donationModel.find().sort({ createdAt: -1 }).lean();
+  }
+
+  async uploadQrImageToS3(file: Express.Multer.File): Promise<string> {
+    const ext = (file.originalname.split('.').pop() ?? 'jpg').toLowerCase();
+    const key = `qr-screenshots/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const region = process.env.AWS_REGION ?? 'ap-south-1';
+    const bucket = process.env.AWS_S3_BUCKET!;
+
+    const s3 = new S3Client({
+      region,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      followRegionRedirects: true,
+    });
+
+    await s3.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      ACL: 'public-read',
+    }));
+
+    return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
   }
 }

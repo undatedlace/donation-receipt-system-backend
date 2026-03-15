@@ -46,6 +46,11 @@ export class CreateDonationDto {
   @IsNumber()
   @Min(1)
   amount: number;
+
+  @ApiPropertyOptional({ example: 'https://s3.../qr.jpg', description: 'QR screenshot URL (auto-populated)' })
+  @IsOptional()
+  @IsString()
+  qrImageUrl?: string;
 }
 
 export class UpdateDonationDto {

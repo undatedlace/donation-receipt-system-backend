@@ -11,18 +11,19 @@ import { UpdateUserDto } from './dto/update-user.dto';
 @ApiBearerAuth()
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all users (admin only)' })
+  @Roles('admin', 'internal-admin', 'user')
+  @ApiOperation({ summary: 'List all users (admin / internal-admin / user)' })
   @ApiResponse({ status: 200, description: 'Array of users (password omitted)' })
   async findAll() {
     return this.usersService.findAll();
   }
 
   @Post()
+  @Roles('admin')
   @ApiOperation({ summary: 'Register a new user (admin only)' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
@@ -39,6 +40,7 @@ export class UsersController {
   }
 
   @Patch(':id')
+  @Roles('admin')
   @ApiOperation({ summary: 'Update a user (admin only)' })
   @ApiParam({ name: 'id', description: 'MongoDB ObjectId of the user' })
   @ApiResponse({ status: 200, description: 'Updated user (password omitted)' })
@@ -49,6 +51,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a user (admin only)' })
   @ApiParam({ name: 'id', description: 'MongoDB ObjectId of the user' })

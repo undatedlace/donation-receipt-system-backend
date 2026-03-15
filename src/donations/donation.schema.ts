@@ -58,6 +58,9 @@ export class Donation {
   @Prop()
   whatsappSentAt: Date;
 
+  @Prop()
+  qrImageUrl: string;
+
   @Prop({ type: Types.ObjectId, ref: 'User' })
   createdBy: Types.ObjectId;
 }
