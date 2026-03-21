@@ -67,10 +67,29 @@ export class ReceiptsService {
     const rd = donation.date instanceof Date ? donation.date : new Date(donation.date);
     const dateStr = `${rd.getDate()}/${rd.getMonth() + 1}/${rd.getFullYear()}`;
 
+    // Use toObject() if available (Mongoose document) to get a plain object,
+    // then pick only the fields the Python script needs.
+    const raw: any = typeof (donation as any).toObject === 'function'
+      ? (donation as any).toObject()
+      : donation;
+
+    const payload = {
+      receiptNumber: raw.receiptNumber,
+      donorName:     raw.donorName,
+      mobileNumber:  raw.mobileNumber,
+      address:       raw.address,
+      donationType:  raw.donationType,
+      mode:          raw.mode,
+      fills:         raw.fills,
+      amount:        raw.amount,
+      date:          dateStr,
+      generatedAt,
+    };
+
     const python = process.env.PYTHON_BIN ?? 'python3';
     const { stdout, stderr } = await execFileAsync(
       python,
-      [this.scriptPath, JSON.stringify({ ...donation, date: dateStr, generatedAt }), outPath],
+      [this.scriptPath, JSON.stringify(payload), outPath],
       { timeout: 30_000 },
     );
     if (stderr) this.logger.warn(`Python stderr: ${stderr}`);
