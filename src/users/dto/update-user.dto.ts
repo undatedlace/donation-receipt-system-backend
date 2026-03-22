@@ -28,4 +28,14 @@ export class UpdateUserDto {
   @IsArray()
   @IsString({ each: true })
   roles?: string[];
+
+  @ApiPropertyOptional({ example: 'Zone A' })
+  @IsOptional()
+  @IsString()
+  zone?: string;
+
+  @ApiPropertyOptional({ example: 'Mira Road Branch' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
 }

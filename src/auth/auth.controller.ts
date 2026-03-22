@@ -16,7 +16,7 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'User registered successfully' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   register(@Body() body: RegisterDto) {
-    return this.authService.register(body.firstName, body.lastName, body.email, body.password, body.roles ?? []);
+    return this.authService.register(body.firstName, body.lastName, body.email, body.password, body.roles ?? [], body.zone, body.branch);
   }
 
   @Post('login')

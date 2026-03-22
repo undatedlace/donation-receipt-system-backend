@@ -27,4 +27,14 @@ export class RegisterDto {
   @IsArray()
   @IsString({ each: true })
   roles?: string[];
+
+  @ApiPropertyOptional({ example: 'Zone A', description: 'Zone' })
+  @IsOptional()
+  @IsString()
+  zone?: string;
+
+  @ApiPropertyOptional({ example: 'Mira Road Branch', description: 'Branch' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
 }

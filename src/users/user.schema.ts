@@ -19,6 +19,12 @@ export class User {
 
   @Prop({ default: true })
   lastName: string;
+
+  @Prop()
+  zone: string;
+
+  @Prop()
+  branch: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

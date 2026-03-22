@@ -61,6 +61,12 @@ export class Donation {
   @Prop()
   qrImageUrl: string;
 
+  @Prop()
+  zone: string;
+
+  @Prop()
+  branch: string;
+
   @Prop({ type: Types.ObjectId, ref: 'User' })
   createdBy: Types.ObjectId;
 }

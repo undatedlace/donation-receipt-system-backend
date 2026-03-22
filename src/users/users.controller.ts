@@ -34,6 +34,8 @@ export class UsersController {
       dto.email,
       dto.password,
       dto.roles ?? ['user'],
+      dto.zone,
+      dto.branch,
     );
     const { password: _, ...result } = (user as any).toObject();
     return result;

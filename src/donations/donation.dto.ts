@@ -51,6 +51,16 @@ export class CreateDonationDto {
   @IsOptional()
   @IsString()
   qrImageUrl?: string;
+
+  @ApiPropertyOptional({ example: 'Zone A', description: 'Zone of the donor' })
+  @IsOptional()
+  @IsString()
+  zone?: string;
+
+  @ApiPropertyOptional({ example: 'Mira Road Branch', description: 'Branch of the donor' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
 }
 
 export class UpdateDonationDto {
