@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Donation, DonationDocument } from './donation.schema';
-import { CreateDonationDto } from './donation.dto';
+import { CreateDonationDto, UpdateDonationDto } from './donation.dto';
 
 @Injectable()
 export class DonationsService {
@@ -25,10 +25,13 @@ export class DonationsService {
     limit?: number;
     search?: string;
     donationType?: string;
+    mode?: string;
+    zone?: string;
+    branch?: string;
     startDate?: string;
     endDate?: string;
   }) {
-    const { page = 1, limit = 20, search, donationType, startDate, endDate } = query;
+    const { page = 1, limit = 20, search, donationType, mode, zone, branch, startDate, endDate } = query;
     const filter: any = {};
 
     if (search) {
@@ -40,6 +43,9 @@ export class DonationsService {
     }
 
     if (donationType) filter.donationType = donationType;
+    if (mode) filter.mode = mode;
+    if (zone) filter.zone = { $regex: zone, $options: 'i' };
+    if (branch) filter.branch = { $regex: branch, $options: 'i' };
 
     if (startDate || endDate) {
       filter.date = {};
@@ -85,6 +91,14 @@ export class DonationsService {
       { whatsappSent: true, whatsappSentAt: new Date() },
       { new: true },
     );
+    if (!result) throw new NotFoundException('Donation not found');
+    return result;
+  }
+
+  async update(id: string, dto: UpdateDonationDto): Promise<DonationDocument> {
+    const update: any = { ...dto };
+    if (dto.date) update.date = new Date(dto.date);
+    const result = await this.donationModel.findByIdAndUpdate(id, update, { new: true });
     if (!result) throw new NotFoundException('Donation not found');
     return result;
   }

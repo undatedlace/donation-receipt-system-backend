@@ -1,13 +1,15 @@
 import {
-  Controller, Get, Post, Delete, Body, Param, Query,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, Request, Res, Header, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { DonationsService } from './donations.service';
-import { CreateDonationDto } from './donation.dto';
+import { CreateDonationDto, UpdateDonationDto } from './donation.dto';
 
 @ApiTags('Donations')
 @ApiBearerAuth()
@@ -66,6 +68,19 @@ export class DonationsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   findOne(@Param('id') id: string) {
     return this.donationsService.findOne(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'internal-admin')
+  @ApiOperation({ summary: 'Update a donation (admin/internal-admin only)' })
+  @ApiParam({ name: 'id', description: 'MongoDB ObjectId of the donation' })
+  @ApiBody({ type: UpdateDonationDto })
+  @ApiResponse({ status: 200, description: 'Donation updated successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Donation not found' })
+  update(@Param('id') id: string, @Body() dto: UpdateDonationDto) {
+    return this.donationsService.update(id, dto);
   }
 
   @Delete(':id')

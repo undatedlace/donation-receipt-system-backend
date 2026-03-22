@@ -64,18 +64,66 @@ export class CreateDonationDto {
 }
 
 export class UpdateDonationDto {
-  @ApiPropertyOptional({ example: 'Ahmed Ali', description: 'Updated donor name' })
+  @ApiPropertyOptional({ example: 'John Doe' })
+  @IsOptional()
+  @IsString()
+  fills?: string;
+
+  @ApiPropertyOptional({ example: '2026-03-08' })
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @ApiPropertyOptional({ example: 'Ahmed Ali' })
   @IsOptional()
   @IsString()
   donorName?: string;
 
-  @ApiPropertyOptional({ example: 1000, description: 'Updated amount' })
+  @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
-  @IsNumber()
-  amount?: number;
+  @IsString()
+  mobileNumber?: string;
 
-  @ApiPropertyOptional({ enum: DonationType, description: 'Updated donation type' })
+  @ApiPropertyOptional({ example: '123 Main St, City' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ enum: DonationType })
   @IsOptional()
   @IsEnum(DonationType)
   donationType?: DonationType;
+
+  @ApiPropertyOptional({ enum: PaymentMode })
+  @IsOptional()
+  @IsEnum(PaymentMode)
+  mode?: PaymentMode;
+
+  @ApiPropertyOptional({ example: 5, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  boxNumber?: number;
+
+  @ApiPropertyOptional({ example: 1000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  amount?: number;
+
+  @ApiPropertyOptional({ example: 'https://s3.../qr.jpg' })
+  @IsOptional()
+  @IsString()
+  qrImageUrl?: string;
+
+  @ApiPropertyOptional({ example: 'Zone A' })
+  @IsOptional()
+  @IsString()
+  zone?: string;
+
+  @ApiPropertyOptional({ example: 'Mira Road Branch' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
 }
