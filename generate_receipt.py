@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-SDI Education Center — PDF Receipt Generator (v13 final)
-All spacing, address position, amount box height, and footer gap finalized.
+SDI Education Center — PDF Receipt Generator (v17 — fully dynamic)
+Every section flows based on actual content height.
+Nothing is hardcoded except the page footer band (which is always fixed).
 """
 import sys, os, json
 from reportlab.pdfgen import canvas as rl_canvas
@@ -11,7 +12,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 BASE   = os.path.dirname(os.path.abspath(__file__))
 FONTS  = os.path.join(BASE, 'fonts')
 ASSETS = os.path.join(BASE, 'assets')
-K      = 0.5523   # bezier quarter-circle constant
+K      = 0.5523
 
 
 def register_fonts():
@@ -41,7 +42,8 @@ def register_fonts():
                 pdfmetrics.registerFont(TTFont(name, p)); break
 
 
-def wrap_text(c, text, font, size, max_width):
+def get_lines(c, text, font, size, max_width):
+    """Split text into wrapped lines."""
     words, lines, cur = str(text).split(), [], ''
     for w in words:
         t = f'{cur} {w}'.strip()
@@ -53,11 +55,30 @@ def wrap_text(c, text, font, size, max_width):
     return lines or ['']
 
 
-def draw_wrapped(c, text, font, size, x, y, max_width, lh=None):
+def field_height(c, text, font, size, max_width, lh=None):
+    """Total height consumed by a wrapped text field."""
     if lh is None: lh = size * 1.35
-    for line in wrap_text(c, text, font, size, max_width):
-        c.setFont(font, size); c.drawString(x, y, line); y -= lh
-    return y
+    return len(get_lines(c, text, font, size, max_width)) * lh
+
+
+def draw_label(c, text, font, size, x, y_pt, H):
+    """Draw a single-line label. y_pt = pdfplumber top coord."""
+    c.setFont(font, size)
+    c.drawString(x, H - y_pt - size, text)
+
+
+def draw_field(c, text, font, size, x, y_pt, max_width, H, lh=None):
+    """
+    Draw wrapped text starting at y_pt (pdfplumber top-origin).
+    Returns the pdfplumber y coordinate AFTER the last line.
+    """
+    if lh is None: lh = size * 1.35
+    rl_y = H - y_pt
+    for line in get_lines(c, text, font, size, max_width):
+        c.setFont(font, size)
+        c.drawString(x, rl_y - size, line)
+        rl_y -= lh
+    return H - rl_y   # pdfplumber y after last line
 
 
 def draw_logo_badge(c, rect_x, y_bottom, height, W):
@@ -81,10 +102,25 @@ def build_pdf(donation: dict, out_path: str):
     WAVE_LITE = (0.5333, 0.6863, 0.8667)
     WAVE_MID  = (0.2784, 0.4627, 0.7255)
 
+    # ── Spacing constants ─────────────────────────────────────────────────
+    LBL_SIZE  = 13.032   # label font size
+    VAL_SIZE  = 14.0     # value font size
+    LV_GAP    = 4        # gap: label bottom → value top
+    ROW_GAP   = 10       # gap: value bottom → next label top
+    SEC_GAP   = 20       # gap between major sections
+
+    # ── Fixed layout anchors ──────────────────────────────────────────────
+    # Footer blue band always starts at top=752.9 (never moves)
+    FOOTER_BAND_TOP = 752.9
+    # Footer text positions (inside blue band — fixed)
+    FOOTER1_Y = 768.673
+    FOOTER2_Y = 784.429
+    FOOTER3_Y = 820.0
+
     c = rl_canvas.Canvas(out_path, pagesize=(W, H))
     fi = lambda col: c.setFillColorRGB(*col)
     st = lambda col: c.setStrokeColorRGB(*col)
-    rl = lambda top: H - top   # pdfplumber top-origin → reportlab y
+    rl = lambda top: H - top
 
     # ── 0. Page background ───────────────────────────────────────────────
     fi(GREY_BG); st(GREY_BG); c.rect(0, 0, W, H, fill=1, stroke=0)
@@ -94,11 +130,9 @@ def build_pdf(donation: dict, out_path: str):
     if os.path.exists(bg):
         c.drawImage(bg, -9.0, rl(-125.1)-1076.7, width=613.7, height=1076.7, mask='auto')
 
-    # ── 2. Header grey base ───────────────────────────────────────────────
-    fi(GREY_BG); st(GREY_BG)
-    c.rect(-14, rl(92.0), 623.3, 139.7, fill=1, stroke=0)
+    # ── 2. Header ─────────────────────────────────────────────────────────
+    fi(GREY_BG); st(GREY_BG); c.rect(-14, rl(92.0), 623.3, 139.7, fill=1, stroke=0)
 
-    # ── 3. Waves ──────────────────────────────────────────────────────────
     fi(WAVE_MID); p=c.beginPath()
     p.moveTo(354.193,rl(31.315))
     p.curveTo(355.558,rl(31.279),356.923,rl(31.242),358.291,rl(31.199))
@@ -128,31 +162,28 @@ def build_pdf(donation: dict, out_path: str):
     p.curveTo(1.149,rl(-41.090),-13.891,rl(-48.135),-13.891,rl(-48.135))
     p.lineTo(609.410,rl(-48.135)); p.close(); c.drawPath(p,fill=1,stroke=0)
 
-    # ── 4. Footer blue band ───────────────────────────────────────────────
+    # ── 3. Footer blue band (drawn early, will be behind content if needed) ──
     fi(BLUE); st(BLUE)
     c.rect(-14, rl(884.4), 623.7, 131.5, fill=1, stroke=0)
 
-    # ── 5. Logo badge — down 25pt from original ───────────────────────────
+    # ── 4. Logo badge ─────────────────────────────────────────────────────
     logo_x   = 463.4
-    logo_top = 175.2 + 25    # 200.2
+    logo_top = 175.2 + 25
     logo_h   = 83.3
-    logo_cx  = logo_x + logo_h/2
     fi(BLUE)
-    draw_logo_badge(c, rect_x=logo_cx, y_bottom=rl(logo_top+logo_h),
+    draw_logo_badge(c, rect_x=logo_x+logo_h/2, y_bottom=rl(logo_top+logo_h),
                     height=logo_h, W=W)
     logo_img = os.path.join(ASSETS, 'logo_circle.png')
     if os.path.exists(logo_img):
-        c.drawImage(logo_img, logo_x, rl(logo_top+logo_h),
-                    width=logo_h, height=logo_h, mask='auto')
+        c.drawImage(logo_img, logo_x, rl(logo_top+logo_h), width=logo_h, height=logo_h, mask='auto')
 
-    # ── 6. SDI EDUCATION CENTER ───────────────────────────────────────────
+    # ── 5. Org name ───────────────────────────────────────────────────────
     fi(BLACK); c.setFont('Agrandir-WideHeavy', 30.011)
     c.drawString(55.977, rl(95.198)-30.011, 'SDI EDUCATION CENTER')
     fi(BLUE); c.setFont('Garet-Bold', 11.029)
     c.drawString(419.623, rl(126.977)-11.029, 'REGD NO.: E-32359')
 
-    # ── 7. DONATION RECEIPT ───────────────────────────────────────────────
-    # +10pt gap vs v12 below SDI/REGD section
+    # ── 6. DONATION RECEIPT ───────────────────────────────────────────────
     DR_Y = 171.2
     fi(BLACK); c.setFont('Agrandir-WideBold', 20.003)
     c.drawString(170.800, rl(DR_Y)-20.003, 'DONATION RECEIPT')
@@ -162,102 +193,153 @@ def build_pdf(donation: dict, out_path: str):
     c.drawString(171.581, rl(DR_Y+20.003+4+8)-14.000,
                  f'RECEIPT NUMBER: {donation["receiptNumber"]}')
 
-    # ── 8. DONOR INFORMATION ─────────────────────────────────────────────
-    # +36pt gap below receipt number (+6pt more than v12)
-    DI_Y  = 253.2
-    DI_UL = 277.2
+    # ── 7. DONOR INFORMATION — fully dynamic ─────────────────────────────
+    y = 253.2   # pdfplumber y — flows downward through this section
+
     fi(BLUE); c.setFont('Garet-Bold', 20.003)
-    c.drawString(47.161, rl(DI_Y)-20.003, 'DONOR INFORMATION')
+    c.drawString(47.161, rl(y)-20.003, 'DONOR INFORMATION')
+    DI_UL = y + 20.003 + 4
     st(BLUE); c.setLineWidth(3.0)
     c.line(47.161, rl(DI_UL), 281.0, rl(DI_UL))
+    y = DI_UL + 14   # 14pt gap after underline
 
-    LV = 5   # label-to-value gap (pt)
-
-    # Full Name
-    FN_LBL = 289.2
-    FN_VAL = 307.2
-    fi(BLACK); c.setFont('Garet-Regular', 13.032)
-    c.drawString(47.161, rl(FN_LBL)-13.032, 'Full Name:')
+    # Full Name label + value
+    fi(BLACK); draw_label(c, 'Full Name:', 'Garet-Regular', LBL_SIZE, 47.161, y, H)
+    y += LBL_SIZE + LV_GAP
     fi(BLUE)
-    draw_wrapped(c, donation['donorName'], 'Poppins-Bold', 14.0,
-                 47.161, rl(FN_VAL)-14.0, max_width=310.0)
+    y = draw_field(c, donation['donorName'], 'Poppins-Bold', VAL_SIZE,
+                   47.161, y, 310.0, H)
 
-    # Phone + Address  — address moved left to x=300 (was 384.540)
-    PH_LBL = 339.2
-    PH_VAL = 357.3
-    ADDR_X = 300.0   # moved left from 384.540
-    fi(BLACK); c.setFont('Garet-Regular', 13.032)
-    c.drawString(47.161,  rl(PH_LBL)-13.032, 'Phone Number:')
-    c.drawString(ADDR_X,  rl(PH_LBL)-13.032, 'Address:')
-    fi(BLUE); c.setFont('Poppins-Bold', 14.0)
-    c.drawString(47.161, rl(PH_VAL)-14.0, f'+91 {donation["mobileNumber"]}')
+    # Phone + Address row — both labels on same line, then values below
+    y += ROW_GAP
+    ph_label_y = y
+    fi(BLACK)
+    draw_label(c, 'Phone Number:', 'Garet-Regular', LBL_SIZE, 47.161, ph_label_y, H)
+    draw_label(c, 'Address:',      'Garet-Regular', LBL_SIZE, 300.0,  ph_label_y, H)
+    y += LBL_SIZE + LV_GAP
+
+    # Phone value (single line)
+    fi(BLUE); c.setFont('Poppins-Bold', VAL_SIZE)
+    c.drawString(47.161, rl(y)-VAL_SIZE, f'+91 {donation["mobileNumber"]}')
+    y_after_phone = y + VAL_SIZE * 1.35
+
+    # Address value (may wrap multiple lines)
     fi(BLUE)
-    draw_wrapped(c, donation['address'], 'Poppins-Bold', 14.0,
-                 ADDR_X, rl(PH_VAL)-14.0, max_width=200.0)  # wider max_width now
+    y_after_addr = draw_field(c, donation['address'], 'Poppins-Bold', VAL_SIZE,
+                              300.0, y, 200.0, H)
 
-    # ── 9. DONATION DETAILS box ───────────────────────────────────────────
-    BOX_TOP = 381.3
-    BOX_H   = 210.0
-    BOX_BOT = 591.3
+    # donor_bottom = whichever field ends lower on the page
+    y = max(y_after_phone, y_after_addr)
+
+    # ── 8. DONATION DETAILS box — fully dynamic ───────────────────────────
+    # Box top = donor_bottom + gap (never above MIN_BOX_Y)
+    MIN_BOX_Y = 370.0
+    BOX_PAD   = 20
+    BOX_TOP   = max(MIN_BOX_Y, y + BOX_PAD)
+    BOX_PAD_INNER = 12   # top padding inside box
+
+    # Draw box background AFTER we know its height (compute first pass)
+    # ── Compute row positions inside box ──────────────────────────────────
+    iy = BOX_TOP + BOX_PAD_INNER   # iy = current y inside box
+
+    # Heading
+    HD_Y   = iy
+    UL_Y   = HD_Y + 20.003 + 4
+    iy     = UL_Y + 12              # gap after underline
+
+    # Row 1 — Donation Type + Date
+    R1_LBL = iy
+    R1_VAL = R1_LBL + LBL_SIZE + LV_GAP
+    h_r1_left  = field_height(c, donation['donationType'], 'Poppins-Bold', VAL_SIZE, 140.0)
+    h_r1_right = VAL_SIZE * 1.35   # date is always 1 line
+    iy = R1_VAL + max(h_r1_left, h_r1_right) + ROW_GAP
+
+    # Row 2 — Payment Mode + Prepared By
+    R2_LBL = iy
+    R2_VAL = R2_LBL + LBL_SIZE + LV_GAP
+    h_r2_left  = field_height(c, donation['mode'],  'Poppins-Bold', VAL_SIZE, 140.0)
+    h_r2_right = field_height(c, donation['fills'], 'Poppins-Bold', VAL_SIZE, 155.0)
+    iy = R2_VAL + max(h_r2_left, h_r2_right) + ROW_GAP
+
+    # Row 3 — Zone + Branch
+    R3_LBL = iy
+    R3_VAL = R3_LBL + LBL_SIZE + LV_GAP
+    h_r3_left  = field_height(c, donation.get('zone',''),   'Poppins-Bold', VAL_SIZE, 140.0)
+    h_r3_right = field_height(c, donation.get('branch',''), 'Poppins-Bold', VAL_SIZE, 155.0)
+    iy = R3_VAL + max(h_r3_left, h_r3_right)
+
+    BOX_BOT_CONTENT = iy + BOX_PAD_INNER   # box bottom follows content
+
+    # Amount box spans ALL 3 rows — visually balanced against all data rows
+    AMT_TOP   = R1_LBL - 4
+    AMT_BOT   = R3_VAL + max(h_r3_left, h_r3_right) + 6
+    AMT_H     = AMT_BOT - AMT_TOP
+    BAND_H    = 38.0
+    WH_TOP    = AMT_TOP + BAND_H + 3
+    WH_BOT    = AMT_BOT - 3
+    WH_H      = max(WH_BOT - WH_TOP, 44.0)
+
+    # Final box bottom = max of content and amount box
+    BOX_BOT = max(BOX_BOT_CONTENT, AMT_BOT + BOX_PAD_INNER)
+
+    # ── Cap BOX_BOT so blessing text ALWAYS fits above footer ───────────
+    # Reserve 70pt below box for blessing text (no arabic in extreme cases)
+    BOX_BOT_MAX = FOOTER_BAND_TOP - 70
+    BOX_BOT     = min(BOX_BOT, BOX_BOT_MAX)
+
+    # ── If rows overflow the capped box, clip them to a safe Y inside box ──
+    # Rows must not draw below (BOX_BOT - BOX_PAD_INNER)
+    ROW_MAX_Y = BOX_BOT - BOX_PAD_INNER
+    # Clamp each row's LBL/VAL to stay within the box
+    def clamp(y):  return min(y, ROW_MAX_Y - 1)
+    R1_LBL = clamp(R1_LBL); R1_VAL = clamp(R1_VAL)
+    R2_LBL = clamp(R2_LBL); R2_VAL = clamp(R2_VAL)
+    R3_LBL = clamp(R3_LBL); R3_VAL = clamp(R3_VAL)
+    # Also clamp amount box
+    AMT_TOP = min(AMT_TOP, R1_LBL - 4)
+    AMT_BOT = min(AMT_BOT, R3_VAL + max(h_r3_left, h_r3_right) + 6)
+    WH_TOP  = AMT_TOP + BAND_H + 3
+    WH_BOT  = min(AMT_BOT - 3, ROW_MAX_Y)
+    WH_H    = max(WH_BOT - WH_TOP, 40.0)
+
+    # ── Now draw the box background ───────────────────────────────────────
     fi(BOX_BG); st(BOX_BG)
-    c.rect(24.6, rl(BOX_BOT), 546.6, BOX_H, fill=1, stroke=0)
+    c.rect(24.6, rl(BOX_BOT), 546.6, BOX_BOT-BOX_TOP, fill=1, stroke=0)
 
-    # Heading + underline
-    HD_Y = 395.3
-    UL_Y = 419.3
+    # ── Draw box heading + underline ─────────────────────────────────────
     fi(BLUE); c.setFont('Garet-Bold', 20.003)
     c.drawString(49.728, rl(HD_Y)-20.003, 'DONATION DETAILS')
     st(BLUE); c.setLineWidth(3.0)
     c.line(49.0, rl(UL_Y), 255.0, rl(UL_Y))
 
-    # Row 1 — Donation Type + Date
-    R1_LBL = 433.3
-    R1_VAL = 451.3
-    fi(BLACK); c.setFont('Garet-Regular', 13.032)
-    c.drawString(49.728,  rl(R1_LBL)-13.032, 'Donation Type')
-    c.drawString(201.189, rl(R1_LBL)-13.032, 'Date of Donation')
+    # ── Row 1 ─────────────────────────────────────────────────────────────
+    fi(BLACK); c.setFont('Garet-Regular', LBL_SIZE)
+    c.drawString(49.728,  rl(R1_LBL)-LBL_SIZE, 'Donation Type')
+    c.drawString(201.189, rl(R1_LBL)-LBL_SIZE, 'Date of Donation')
     fi(BLUE)
-    draw_wrapped(c, donation['donationType'], 'Poppins-Bold', 14.0,
-                 49.728, rl(R1_VAL)-14.0, max_width=140.0)
+    draw_field(c, donation['donationType'], 'Poppins-Bold', VAL_SIZE, 49.728, R1_VAL, 140.0, H)
     c.setFont('Garet-Bold', 14.030)
     c.drawString(201.189, rl(R1_VAL)-14.030, donation['date'])
 
-    # Row 2 — Payment Mode + Prepared By
-    R2_LBL = 481.3
-    R2_VAL = 499.3
-    fi(BLACK); c.setFont('Garet-Regular', 13.032)
-    c.drawString(49.728,  rl(R2_LBL)-13.032, 'Payment Mode')
-    c.drawString(201.189, rl(R2_LBL)-13.032, 'Prepared By')
+    # ── Row 2 ─────────────────────────────────────────────────────────────
+    fi(BLACK); c.setFont('Garet-Regular', LBL_SIZE)
+    c.drawString(49.728,  rl(R2_LBL)-LBL_SIZE, 'Payment Mode')
+    c.drawString(201.189, rl(R2_LBL)-LBL_SIZE, 'Prepared By')
     fi(BLUE)
-    draw_wrapped(c, donation['mode'],  'Poppins-Bold', 14.0,
-                 49.728,  rl(R2_VAL)-14.0, max_width=140.0)
-    draw_wrapped(c, donation['fills'], 'Poppins-Bold', 14.0,
-                 201.189, rl(R2_VAL)-14.0, max_width=155.0)
+    draw_field(c, donation['mode'],  'Poppins-Bold', VAL_SIZE, 49.728,  R2_VAL, 140.0, H)
+    draw_field(c, donation['fills'], 'Poppins-Bold', VAL_SIZE, 201.189, R2_VAL, 155.0, H)
 
-    # Row 3 — Zone + Branch
-    R3_LBL = 529.3
-    R3_VAL = 547.3
-    fi(BLACK); c.setFont('Poppins-Regular', 13.032)
-    c.drawString(49.728,  rl(R3_LBL)-13.032, 'Zone')
-    c.drawString(201.189, rl(R3_LBL)-13.032, 'Branch')
-    fi(BLUE)
-    draw_wrapped(c, donation.get('zone',''),   'Poppins-Bold', 14.0,
-                 49.728,  rl(R3_VAL)-14.0, max_width=140.0)
-    draw_wrapped(c, donation.get('branch',''), 'Poppins-Bold', 14.0,
-                 201.189, rl(R3_VAL)-14.0, max_width=155.0)
+    # ── Row 3 — only draw if it fits within the box ─────────────────────
+    if R3_LBL < ROW_MAX_Y - LBL_SIZE:
+        fi(BLACK); c.setFont('Poppins-Regular', LBL_SIZE)
+        c.drawString(49.728,  rl(R3_LBL)-LBL_SIZE, 'Zone')
+        c.drawString(201.189, rl(R3_LBL)-LBL_SIZE, 'Branch')
+        if R3_VAL < ROW_MAX_Y - VAL_SIZE:
+            fi(BLUE)
+            draw_field(c, donation.get('zone',''),   'Poppins-Bold', VAL_SIZE, 49.728,  R3_VAL, 140.0, H)
+            draw_field(c, donation.get('branch',''), 'Poppins-Bold', VAL_SIZE, 201.189, R3_VAL, 155.0, H)
 
-    # ── 10. Amount box ────────────────────────────────────────────────────
-    # Spans rows 1+2. AMT_BOT extended +8pt for taller white panel.
-    # White panel now 52pt tall — fits 5-digit amounts (₹99,999) comfortably.
-    AMT_TOP  = 429.3
-    AMT_BOT  = 525.3   # R2_VAL(507.3)+14+4+8 = 533.3  (+8 vs previous)
-    AMT_H    = AMT_BOT - AMT_TOP   # = 96pt
-
-    BAND_H   = 38.0    # blue top band height — enough for "TOTAL AMOUNT RECEIVED"
-    WH_TOP   = AMT_TOP + BAND_H + 3
-    WH_BOT   = AMT_BOT - 3
-    WH_H     = WH_BOT - WH_TOP     # = 52pt
-
+    # ── Amount box ────────────────────────────────────────────────────────
     fi(BLUE); st(BLUE)
     c.rect(373.4, rl(AMT_BOT), 180.0, AMT_H, fill=1, stroke=0)
     fi(WHITE)
@@ -265,47 +347,52 @@ def build_pdf(donation: dict, out_path: str):
     st(BLUE); c.setLineWidth(1.5)
     c.rect(373.4, rl(AMT_BOT), 180.0, AMT_H, fill=0, stroke=1)
 
-    # "TOTAL AMOUNT RECEIVED" — vertically centred in blue band
     fi(WHITE); c.setFont('Garet-Bold', 11.5)
     lbl = 'TOTAL AMOUNT RECEIVED'
     lbl_y = AMT_TOP + BAND_H/2 + 11.5*0.35
-    c.drawString(373.4 + (180.0-c.stringWidth(lbl,'Garet-Bold',11.5))/2,
-                 rl(lbl_y), lbl)
+    c.drawString(373.4 + (180.0-c.stringWidth(lbl,'Garet-Bold',11.5))/2, rl(lbl_y), lbl)
 
-    # Amount — vertically centred in white panel, fits up to ₹99,999
-    fs    = 32.0   # slightly smaller than 36.337 to ensure 5 digits fit in 172.8pt width
-    amt_y = rl(WH_BOT) + WH_H/2 - fs*0.35
-    # Auto-scale font if amount string is very wide
+    fs      = 32.0
     amt_str = f'{int(donation["amount"]):,}'
     rupee_w = c.stringWidth('\u20B9', 'NotoSans-Bold', fs)
     num_w   = c.stringWidth(amt_str,  'Garet-Bold',    fs)
-    if rupee_w + num_w > 162:   # max safe width
+    if rupee_w + num_w > 162:
         fs = fs * 162 / (rupee_w + num_w)
-        amt_y = rl(WH_BOT) + WH_H/2 - fs*0.35
-
+    amt_y   = rl(WH_BOT) + WH_H/2 - fs*0.35
+    total_w = c.stringWidth('\u20B9','NotoSans-Bold',fs) + c.stringWidth(amt_str,'Garet-Bold',fs)
+    x0      = 373.4 + (180.0 - total_w) / 2
     fi(BLUE)
-    c.setFont('NotoSans-Bold', fs)
-    c.drawString(373.4 + (180.0 - c.stringWidth('\u20B9','NotoSans-Bold',fs)
-                          - c.stringWidth(amt_str,'Garet-Bold',fs))/2,
-                 amt_y, '\u20B9')
-    c.setFont('Garet-Bold', fs)
-    c.drawString(373.4 + (180.0 - c.stringWidth('\u20B9','NotoSans-Bold',fs)
-                          - c.stringWidth(amt_str,'Garet-Bold',fs))/2
-                        + c.stringWidth('\u20B9','NotoSans-Bold',fs),
-                 amt_y, amt_str)
+    c.setFont('NotoSans-Bold', fs); c.drawString(x0, amt_y, '\u20B9')
+    c.setFont('Garet-Bold',    fs); c.drawString(x0 + c.stringWidth('\u20B9','NotoSans-Bold',fs), amt_y, amt_str)
 
-    # ── 11. Arabic calligraphy ────────────────────────────────────────────
-    # +22pt gap below box bottom, +14pt gap above (from previous +27→22 = less gap above
-    # but +16pt footer gap → net result: more space above footer)
-    AR_TOP = 617.3   # 26pt gap from box bottom
-    ar = os.path.join(ASSETS, 'arabic_calligraphy.png')
-    if os.path.exists(ar):
-        c.drawImage(ar, 178.6, rl(AR_TOP+77.7), width=238.1, height=77.7, mask='auto')
+    # ── 9. Arabic + Blessing — dynamically fits between BOX_BOT and footer ──
+    ARABIC_H = 77.7
+    SAFE_END = FOOTER_BAND_TOP - 4    # BL3 + font must be above this
+    BL_TOTAL = 14.030 + 5 + 13.032 + 5 + 13.032   # 3 blessing lines ≈ 50pt
+    available = SAFE_END - BOX_BOT
 
-    # ── 12. Blessing text ─────────────────────────────────────────────────
-    BL1 = 699.0   # 4pt below arabic bottom
-    BL2 = 715.0   # BL1 + 13.032 + 3
-    BL3 = 731.1   # BL2 + 13.032 + 3
+    # Decide whether to show arabic calligraphy based on available space
+    MIN_WITH_ARABIC    = 6 + ARABIC_H + 4 + BL_TOTAL    # ~138pt min (permissive)
+    show_arabic = available >= MIN_WITH_ARABIC
+
+    if show_arabic:
+        # Spread evenly in available space
+        spare     = available - ARABIC_H - BL_TOTAL
+        gap_above = max(10, min(26, spare * 0.45))
+        gap_mid   = max(6,  min(14, spare * 0.35))
+        AR_TOP = BOX_BOT + gap_above
+        ar = os.path.join(ASSETS, 'arabic_calligraphy.png')
+        if os.path.exists(ar):
+            c.drawImage(ar, 178.6, rl(AR_TOP+ARABIC_H),
+                        width=238.1, height=ARABIC_H, mask='auto')
+        BL1 = AR_TOP + ARABIC_H + gap_mid
+    else:
+        # Not enough room — skip arabic, show blessing only with equal spacing
+        gap_above = max(8, (available - BL_TOTAL) / 2)
+        BL1 = BOX_BOT + gap_above
+
+    BL2 = BL1 + 14.030 + 5
+    BL3 = BL2 + 13.032 + 5
     fi(BLUE); c.setFont('Garet-Bold', 14.030)
     t1 = '"May Allah reward you with goodness"'
     c.drawString((W-c.stringWidth(t1,'Garet-Bold',14.030))/2, rl(BL1)-14.030, t1)
@@ -315,18 +402,15 @@ def build_pdf(donation: dict, out_path: str):
     t3 = 'May Allah accept it and bless you in this world and the Hereafter.'
     c.drawString((W-c.stringWidth(t3,'Garet-Regular',13.032))/2, rl(BL3)-13.032, t3)
 
-    # ── 13. Footer — +8pt more space before footer text ───────────────────
-    # Footer text moved to 776 (was 768.673) for more space above footer band
-    FOOTER1 = 768.673
-    FOOTER2 = 784.429
+    # ── 10. Footer text (inside blue band, always fixed) ──────────────────
     fi(WHITE); c.setFont('Poppins-Italic', 10.031)
     ft1 = 'This is an official receipt for your donation records. Please retain for your reference.'
-    c.drawString((W-c.stringWidth(ft1,'Poppins-Italic',10.031))/2, rl(FOOTER1)-10.031, ft1)
+    c.drawString((W-c.stringWidth(ft1,'Poppins-Italic',10.031))/2, rl(FOOTER1_Y)-10.031, ft1)
     ft2 = f'Generated: {donation.get("generatedAt","")} | Receipt: {donation["receiptNumber"]}'
-    c.drawString((W-c.stringWidth(ft2,'Poppins-Italic',10.031))/2, rl(FOOTER2)-10.031, ft2)
+    c.drawString((W-c.stringWidth(ft2,'Poppins-Italic',10.031))/2, rl(FOOTER2_Y)-10.031, ft2)
     c.setFont('Poppins-BoldItalic', 10.031)
-    c.drawString(41.619,  rl(820.0)-10.031, '• SDI EDUCATION CENTER')
-    c.drawString(450.369, rl(820.0)-10.031, '• AUTHORIZED RECEIPT')
+    c.drawString(41.619,  rl(FOOTER3_Y)-10.031, '• SDI EDUCATION CENTER')
+    c.drawString(450.369, rl(FOOTER3_Y)-10.031, '• AUTHORIZED RECEIPT')
 
     c.save()
 
