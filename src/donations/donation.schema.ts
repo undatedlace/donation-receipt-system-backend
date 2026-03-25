@@ -78,10 +78,16 @@ DonationSchema.pre('save', async function (next) {
   if (!this.receiptNumber) {
     const year = new Date().getFullYear();
     const DonationModel = this.constructor as any;
-    const count = await DonationModel.countDocuments({
-      receiptNumber: { $regex: `^RCP-${year}-` },
-    });
-    const seq = String(count + 1).padStart(4, '0');
+    // Find the highest existing receipt number for this year to avoid
+    // collisions when donations are deleted (count-based approach breaks).
+    const latest = await DonationModel.findOne(
+      { receiptNumber: { $regex: `^RCP-${year}-` } },
+      { receiptNumber: 1 },
+    ).sort({ receiptNumber: -1 });
+    const lastSeq = latest
+      ? parseInt(latest.receiptNumber.split('-')[2], 10)
+      : 0;
+    const seq = String(lastSeq + 1).padStart(4, '0');
     this.receiptNumber = `RCP-${year}-${seq}`;
   }
   next();
