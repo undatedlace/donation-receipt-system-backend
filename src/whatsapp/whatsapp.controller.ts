@@ -6,6 +6,7 @@ import {
   UseGuards,
   BadRequestException,
   Logger,
+  Request,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -39,7 +40,7 @@ export class WhatsAppController {
   @ApiOperation({ summary: 'Generate (if needed) and send receipt PDF via WhatsApp' })
   @ApiParam({ name: 'donationId', description: 'MongoDB ObjectId of the donation' })
   @ApiResponse({ status: 200, description: '{ success, receiptUrl, whatsappSent, recipientNumber }' })
-  async sendReceipt(@Param('donationId') donationId: string) {
+  async sendReceipt(@Param('donationId') donationId: string, @Request() req) {
     // 1. Fetch donation
     const donation = await this.donationsService.findOne(donationId);
 
@@ -49,7 +50,7 @@ export class WhatsAppController {
       );
     }
 
-    // 2. Resolve receipt URL — generate PDF if not already stored
+    // 3. Resolve receipt URL — generate PDF if not already stored
     let receiptUrl: string = donation.receiptUrl;
     if (!receiptUrl) {
       this.logger.log(`No receipt URL for donation ${donationId} — generating now`);
@@ -57,7 +58,7 @@ export class WhatsAppController {
       await this.donationsService.updateReceiptUrl(donationId, receiptUrl);
     }
 
-    // 3. Send via Twilio
+    // 4. Send via Twilio
     const result = await this.whatsappService.sendReceiptPdf(
       donation.mobileNumber,
       receiptUrl,
@@ -71,7 +72,7 @@ export class WhatsAppController {
       return { success: false, receiptUrl, whatsappSent: false, error: result.error };
     }
 
-    // 4. Mark donation as WhatsApp sent
+    // 5. Mark donation as WhatsApp sent
     await this.donationsService.markWhatsAppSent(donationId);
 
     return {

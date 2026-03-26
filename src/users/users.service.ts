@@ -48,4 +48,18 @@ export class UsersService {
     const result = await this.userModel.findByIdAndDelete(id);
     if (!result) throw new NotFoundException('User not found');
   }
+
+  async updateSelf(userId: string, dto: { firstName?: string; lastName?: string; email?: string; password?: string }): Promise<UserDocument> {
+    if (dto.email) {
+      const conflict = await this.userModel.findOne({ email: dto.email.toLowerCase(), _id: { $ne: userId } });
+      if (conflict) throw new ConflictException('Email already in use by another account');
+      dto.email = dto.email.toLowerCase();
+    }
+    if (dto.password) {
+      (dto as any).password = await bcrypt.hash(dto.password, 10);
+    }
+    const user = await this.userModel.findByIdAndUpdate(userId, dto, { new: true }).select('-password');
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
 }

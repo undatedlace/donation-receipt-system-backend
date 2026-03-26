@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsArray } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -22,10 +22,10 @@ export class RegisterDto {
   @IsNotEmpty()
   password: string;
 
-  @ApiPropertyOptional({ example: ['user'], description: 'Optional list of role names', type: [String] })
+  @ApiPropertyOptional({ example: ['user'], description: 'Optional list of role names (admin | user)', type: [String] })
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IsIn(['admin', 'user'], { each: true })
   roles?: string[];
 
   @ApiPropertyOptional({ example: 'Zone A', description: 'Zone' })

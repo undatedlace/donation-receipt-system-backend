@@ -62,6 +62,12 @@ export class Donation {
   qrImageUrl: string;
 
   @Prop()
+  chequeNumber: string;
+
+  @Prop()
+  chequeImageUrl: string;
+
+  @Prop()
   zone: string;
 
   @Prop()

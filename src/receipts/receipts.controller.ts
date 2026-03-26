@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, UseGuards, Res } from '@nestjs/common';
+import { Controller, Post, Get, Param, UseGuards, Res, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -19,6 +19,7 @@ export class ReceiptsController {
   @ApiOperation({ summary: 'Generate a PDF receipt for a donation' })
   @ApiParam({ name: 'donationId', description: 'MongoDB ObjectId of the donation' })
   @ApiResponse({ status: 201, description: 'Returns { url, receiptNumber }' })
+  @ApiResponse({ status: 403, description: 'Forbidden — not your donation' })
   @ApiResponse({ status: 404, description: 'Donation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async generate(@Param('donationId') donationId: string) {

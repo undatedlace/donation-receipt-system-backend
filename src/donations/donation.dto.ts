@@ -52,6 +52,16 @@ export class CreateDonationDto {
   @IsString()
   qrImageUrl?: string;
 
+  @ApiPropertyOptional({ example: '012345', description: 'Cheque number (for Cheque payments)' })
+  @IsOptional()
+  @IsString()
+  chequeNumber?: string;
+
+  @ApiPropertyOptional({ example: 'https://s3.../cheque.jpg', description: 'Cheque image URL (for Cheque payments)' })
+  @IsOptional()
+  @IsString()
+  chequeImageUrl?: string;
+
   @ApiPropertyOptional({ example: 'Zone A', description: 'Zone of the donor' })
   @IsOptional()
   @IsString()
@@ -116,6 +126,16 @@ export class UpdateDonationDto {
   @IsOptional()
   @IsString()
   qrImageUrl?: string;
+
+  @ApiPropertyOptional({ example: '012345' })
+  @IsOptional()
+  @IsString()
+  chequeNumber?: string;
+
+  @ApiPropertyOptional({ example: 'https://s3.../cheque.jpg' })
+  @IsOptional()
+  @IsString()
+  chequeImageUrl?: string;
 
   @ApiPropertyOptional({ example: 'Zone A' })
   @IsOptional()

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -95,7 +95,14 @@ export class DonationsService {
     return result;
   }
 
-  async update(id: string, dto: UpdateDonationDto): Promise<DonationDocument> {
+  async update(id: string, dto: UpdateDonationDto, userId: string, userRoles: string[]): Promise<DonationDocument> {
+    const isAdmin = userRoles.includes('admin');
+    if (!isAdmin) {
+      const existing = await this.donationModel.findById(id);
+      if (!existing) throw new NotFoundException('Donation not found');
+      if (String(existing.createdBy) !== userId)
+        throw new ForbiddenException('You can only edit your own donations');
+    }
     const update: any = { ...dto };
     if (dto.date) update.date = new Date(dto.date);
     const result = await this.donationModel.findByIdAndUpdate(id, update, { new: true });
@@ -103,9 +110,28 @@ export class DonationsService {
     return result;
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId: string, userRoles: string[]): Promise<void> {
+    const isAdmin = userRoles.includes('admin');
+    if (!isAdmin) {
+      const existing = await this.donationModel.findById(id);
+      if (!existing) throw new NotFoundException('Donation not found');
+      if (String(existing.createdBy) !== userId)
+        throw new ForbiddenException('You can only delete your own donations');
+    }
     const result = await this.donationModel.findByIdAndDelete(id);
     if (!result) throw new NotFoundException('Donation not found');
+  }
+
+  async deleteMany(ids: string[], userId: string, userRoles: string[]): Promise<{ deleted: number }> {
+    const isAdmin = userRoles.includes('admin');
+    if (!isAdmin) {
+      const docs = await this.donationModel.find({ _id: { $in: ids } }).select('createdBy');
+      const forbidden = docs.filter(d => String(d.createdBy) !== userId);
+      if (forbidden.length > 0)
+        throw new ForbiddenException('You can only delete your own donations');
+    }
+    const result = await this.donationModel.deleteMany({ _id: { $in: ids } });
+    return { deleted: result.deletedCount };
   }
 
   async exportAll() {
@@ -115,6 +141,32 @@ export class DonationsService {
   async uploadQrImageToS3(file: Express.Multer.File): Promise<string> {
     const ext = (file.originalname.split('.').pop() ?? 'jpg').toLowerCase();
     const key = `qr-screenshots/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const region = process.env.AWS_REGION ?? 'ap-south-1';
+    const bucket = process.env.AWS_S3_BUCKET!;
+
+    const s3 = new S3Client({
+      region,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      followRegionRedirects: true,
+    });
+
+    await s3.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      ACL: 'public-read',
+    }));
+
+    return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+  }
+
+  async uploadChequeImageToS3(file: Express.Multer.File): Promise<string> {
+    const ext = (file.originalname.split('.').pop() ?? 'jpg').toLowerCase();
+    const key = `cheque-images/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const region = process.env.AWS_REGION ?? 'ap-south-1';
     const bucket = process.env.AWS_S3_BUCKET!;
 
