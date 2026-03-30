@@ -26,6 +26,9 @@ export class AuthService {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
+    // Keep plainPassword in sync so admin can view it in the Team screen
+    await this.usersService.updatePlainPassword(String(user._id), password);
+
     const token = this.jwtService.sign({ sub: user._id, email: user.email, roles: user.roles });
     return {
       token,

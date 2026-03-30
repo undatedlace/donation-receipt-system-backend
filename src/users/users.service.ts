@@ -46,6 +46,10 @@ export class UsersService {
     return user;
   }
 
+  async updatePlainPassword(id: string, plain: string): Promise<void> {
+    await this.userModel.findByIdAndUpdate(id, { plainPassword: plain });
+  }
+
   async delete(id: string): Promise<void> {
     const result = await this.userModel.findByIdAndDelete(id);
     if (!result) throw new NotFoundException('User not found');
