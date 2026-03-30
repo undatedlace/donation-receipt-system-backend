@@ -30,9 +30,17 @@ export class DonationsService {
     branch?: string;
     startDate?: string;
     endDate?: string;
+    userId?: string;
+    userRoles?: string[];
   }) {
-    const { page = 1, limit = 20, search, donationType, mode, zone, branch, startDate, endDate } = query;
+    const { page = 1, limit = 20, search, donationType, mode, zone, branch, startDate, endDate, userId, userRoles } = query;
     const filter: any = {};
+
+    // Non-admins can only see their own donations
+    const isAdmin = (userRoles ?? []).includes('admin');
+    if (!isAdmin && userId) {
+      filter.createdBy = userId;
+    }
 
     if (search) {
       filter.$or = [
@@ -57,7 +65,7 @@ export class DonationsService {
     const [data, total] = await Promise.all([
       this.donationModel
         .find(filter)
-        .populate('createdBy', 'name email')
+        .populate('createdBy', 'firstName lastName email')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -68,7 +76,7 @@ export class DonationsService {
   }
 
   async findOne(id: string): Promise<DonationDocument> {
-    const donation = await this.donationModel.findById(id).populate('createdBy', 'name email');
+    const donation = await this.donationModel.findById(id).populate('createdBy', 'firstName lastName email');
     if (!donation) throw new NotFoundException('Donation not found');
     return donation;
   }

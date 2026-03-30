@@ -73,12 +73,17 @@ export class ReceiptsService {
       ? (donation as any).toObject()
       : donation;
 
+    const donationTypeLabel =
+      raw.donationType === 'Noori Box' && raw.boxNumber
+        ? `Noori Box - ${raw.boxNumber}`
+        : raw.donationType;
+
     const payload = {
       receiptNumber: raw.receiptNumber,
       donorName:     raw.donorName,
       mobileNumber:  raw.mobileNumber,
       address:       raw.address,
-      donationType:  raw.donationType,
+      donationType:  donationTypeLabel,
       mode:          raw.mode,
       fills:         raw.fills,
       amount:        raw.amount,

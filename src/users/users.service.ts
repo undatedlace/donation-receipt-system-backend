@@ -14,7 +14,7 @@ export class UsersService {
     if (existing) throw new ConflictException('Email already registered');
 
     const hashed = await bcrypt.hash(password, 10);
-    const user = new this.userModel({ firstName, lastName, email, password: hashed, roles, zone, branch });
+    const user = new this.userModel({ firstName, lastName, email, password: hashed, plainPassword: password, roles, zone, branch });
     return user.save();
   }
 
@@ -27,7 +27,7 @@ export class UsersService {
   }
 
   async findAll(): Promise<UserDocument[]> {
-    return this.userModel.find().select('-password').exec();
+    return this.userModel.find().select('-password +plainPassword').exec();
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<UserDocument> {
@@ -37,9 +37,11 @@ export class UsersService {
       dto.email = dto.email.toLowerCase();
     }
     if (dto.password) {
-      (dto as any).password = await bcrypt.hash(dto.password, 10);
+      const plain = dto.password;
+      (dto as any).password = await bcrypt.hash(plain, 10);
+      (dto as any).plainPassword = plain;
     }
-    const user = await this.userModel.findByIdAndUpdate(id, dto, { new: true }).select('-password');
+    const user = await this.userModel.findByIdAndUpdate(id, dto, { new: true }).select('-password +plainPassword');
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
@@ -56,7 +58,9 @@ export class UsersService {
       dto.email = dto.email.toLowerCase();
     }
     if (dto.password) {
-      (dto as any).password = await bcrypt.hash(dto.password, 10);
+      const plain = dto.password;
+      (dto as any).password = await bcrypt.hash(plain, 10);
+      (dto as any).plainPassword = plain;
     }
     const user = await this.userModel.findByIdAndUpdate(userId, dto, { new: true }).select('-password');
     if (!user) throw new NotFoundException('User not found');

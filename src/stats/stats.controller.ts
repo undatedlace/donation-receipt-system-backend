@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Request, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { StatsService } from './stats.service';
@@ -14,7 +14,7 @@ export class StatsController {
   @ApiOperation({ summary: 'Get dashboard statistics (totals, counts, breakdowns)' })
   @ApiResponse({ status: 200, description: 'Returns dashboard stats' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  getDashboard() {
-    return this.statsService.getDashboardStats();
+  getDashboard(@Request() req) {
+    return this.statsService.getDashboardStats(req.user.userId, req.user.roles ?? []);
   }
 }

@@ -33,8 +33,12 @@ export class DonationsController {
   @ApiQuery({ name: 'donationType', required: false, type: String, description: 'Filter by donation type' })
   @ApiResponse({ status: 200, description: 'Returns paginated list of donations' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  findAll(@Query() query: any) {
-    return this.donationsService.findAll(query);
+  findAll(@Query() query: any, @Request() req) {
+    return this.donationsService.findAll({
+      ...query,
+      userId: req.user.userId,
+      userRoles: req.user.roles ?? [],
+    });
   }
 
   @Get('export/csv')

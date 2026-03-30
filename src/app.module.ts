@@ -15,8 +15,11 @@ import { DonationsModule } from './donations/donations.module';
     ConfigModule.forRoot({ isGlobal: true }),
     MongooseModule.forRoot(
       process.env.NODE_ENV === 'production'
-        ? (process.env.MONGO_URI_PROD || process.env.MONGO_URI || 'mongodb://localhost:27017/donation-app')
-        : (process.env.MONGO_URI_TEST || process.env.MONGO_URI || 'mongodb://localhost:27017/donation-app-test'),
+        ? (process.env.MONGO_URI_PROD || process.env.MONGO_URI || 'mongodb://localhost:27017')
+        : (process.env.MONGO_URI_TEST || process.env.MONGO_URI || 'mongodb://localhost:27017'),
+      {
+        dbName: process.env.NODE_ENV === 'production' ? 'noori_donations' : 'test',
+      },
     ),
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'receipts'),
