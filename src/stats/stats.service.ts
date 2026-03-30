@@ -27,6 +27,7 @@ export class StatsService {
       byMode,
       recentDonations,
       monthlyTrend,
+      byUser,
     ] = await Promise.all([
       this.donationModel.countDocuments(baseFilter),
       this.donationModel.aggregate([
@@ -58,6 +59,49 @@ export class StatsService {
         { $sort: { '_id.year': -1, '_id.month': -1 } },
         { $limit: 12 },
       ]),
+      // Collection by user — admin only
+      isAdmin
+        ? this.donationModel.aggregate([
+            {
+              $group: {
+                _id: '$createdBy',
+                count: { $sum: 1 },
+                total: { $sum: '$amount' },
+              },
+            },
+            {
+              $lookup: {
+                from: 'users',
+                localField: '_id',
+                foreignField: '_id',
+                as: 'userInfo',
+              },
+            },
+            {
+              $unwind: {
+                path: '$userInfo',
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+            {
+              $project: {
+                _id: 1,
+                count: 1,
+                total: 1,
+                name: {
+                  $cond: {
+                    if: { $ifNull: ['$userInfo', false] },
+                    then: {
+                      $concat: ['$userInfo.firstName', ' ', '$userInfo.lastName'],
+                    },
+                    else: 'Unknown',
+                  },
+                },
+              },
+            },
+            { $sort: { total: -1 } },
+          ])
+        : Promise.resolve([]),
     ]);
 
     return {
@@ -68,6 +112,7 @@ export class StatsService {
       byMode,
       recentDonations,
       monthlyTrend: monthlyTrend.reverse(),
+      byUser,
     };
   }
 }
