@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Donation, DonationDocument } from '../donations/donation.schema';
 
 @Injectable()
@@ -17,7 +17,9 @@ export class StatsService {
     // Base filter: non-admins only see their own donations
     const baseFilter: any = isAdmin ? {} : { createdBy: userId };
     const monthFilter: any = { ...baseFilter, createdAt: { $gte: startOfMonth } };
-    const matchStage = isAdmin ? [] : [{ $match: { createdBy: new Types.ObjectId(userId) } }];
+    const matchStage = isAdmin
+      ? []
+      : [{ $match: { $expr: { $eq: [{ $toString: '$createdBy' }, userId] } } }];
 
     const [
       totalDonations,
@@ -70,10 +72,18 @@ export class StatsService {
               },
             },
             {
+              // Use pipeline lookup with $toString on both sides so the join
+              // works whether createdBy is stored as a string or ObjectId
               $lookup: {
                 from: 'users',
-                localField: '_id',
-                foreignField: '_id',
+                let: { uid: { $toString: '$_id' } },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: [{ $toString: '$_id' }, '$$uid'] },
+                    },
+                  },
+                ],
                 as: 'userInfo',
               },
             },
