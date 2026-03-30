@@ -27,7 +27,7 @@ export class UsersService {
   }
 
   async findAll(): Promise<UserDocument[]> {
-    return this.userModel.find().select('-password +plainPassword').exec();
+    return this.userModel.find().select('-password').exec();
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<UserDocument> {
@@ -41,7 +41,7 @@ export class UsersService {
       (dto as any).password = await bcrypt.hash(plain, 10);
       (dto as any).plainPassword = plain;
     }
-    const user = await this.userModel.findByIdAndUpdate(id, dto, { new: true }).select('-password +plainPassword');
+    const user = await this.userModel.findByIdAndUpdate(id, dto, { new: true }).select('-password');
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
