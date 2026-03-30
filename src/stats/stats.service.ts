@@ -72,18 +72,16 @@ export class StatsService {
               },
             },
             {
-              // Use pipeline lookup with $toString on both sides so the join
-              // works whether createdBy is stored as a string or ObjectId
+              // Convert the string createdBy to ObjectId so $lookup can join on _id
+              $addFields: {
+                createdByObjId: { $toObjectId: '$_id' },
+              },
+            },
+            {
               $lookup: {
                 from: 'users',
-                let: { uid: { $toString: '$_id' } },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: { $eq: [{ $toString: '$_id' }, '$$uid'] },
-                    },
-                  },
-                ],
+                localField: 'createdByObjId',
+                foreignField: '_id',
                 as: 'userInfo',
               },
             },
