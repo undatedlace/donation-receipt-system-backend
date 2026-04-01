@@ -54,6 +54,7 @@ export class UsersController {
       dto.roles ?? ['user'],
       dto.zone,
       dto.branch,
+      dto.phone,
     );
     const { password: _, ...result } = (user as any).toObject();
     return result;

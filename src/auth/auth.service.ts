@@ -10,12 +10,12 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async register(firstName: string, lastName: string, email: string, password: string, roles: string[], zone?: string, branch?: string) {
-    const user = await this.usersService.create(firstName, lastName, email, password, roles, zone, branch);
+  async register(firstName: string, lastName: string, email: string, password: string, roles: string[], zone?: string, branch?: string, phone?: string) {
+    const user = await this.usersService.create(firstName, lastName, email, password, roles, zone, branch, phone);
     const token = this.jwtService.sign({ sub: user._id, email: user.email, roles: user.roles });
     return {
       token,
-      user: { id: user._id, name: `${user.firstName} ${user.lastName}`, email: user.email, roles: user.roles },
+      user: { id: user._id, name: `${user.firstName} ${user.lastName}`, email: user.email, roles: user.roles, phone: user.phone },
     };
   }
 

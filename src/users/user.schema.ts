@@ -24,6 +24,9 @@ export class User {
   lastName: string;
 
   @Prop()
+  phone: string;
+
+  @Prop()
   zone: string;
 
   @Prop()

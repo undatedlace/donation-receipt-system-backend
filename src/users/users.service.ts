@@ -9,12 +9,12 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersService {
   constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
 
-  async create(firstName: string, lastName: string, email: string, password: string, roles: string[], zone?: string, branch?: string): Promise<UserDocument> {
+  async create(firstName: string, lastName: string, email: string, password: string, roles: string[], zone?: string, branch?: string, phone?: string): Promise<UserDocument> {
     const existing = await this.userModel.findOne({ email: email.toLowerCase() });
     if (existing) throw new ConflictException('Email already registered');
 
     const hashed = await bcrypt.hash(password, 10);
-    const user = new this.userModel({ firstName, lastName, email, password: hashed, plainPassword: password, roles, zone, branch });
+    const user = new this.userModel({ firstName, lastName, email, password: hashed, plainPassword: password, roles, zone, branch, phone });
     return user.save();
   }
 

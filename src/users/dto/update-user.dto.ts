@@ -29,6 +29,11 @@ export class UpdateUserDto {
   @IsString({ each: true })
   roles?: string[];
 
+  @ApiPropertyOptional({ example: '9876543210' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
   @ApiPropertyOptional({ example: 'Zone A' })
   @IsOptional()
   @IsString()

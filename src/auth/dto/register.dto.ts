@@ -28,6 +28,11 @@ export class RegisterDto {
   @IsIn(['admin', 'user'], { each: true })
   roles?: string[];
 
+  @ApiPropertyOptional({ example: '9876543210', description: 'WhatsApp phone number of the user' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
   @ApiPropertyOptional({ example: 'Zone A', description: 'Zone' })
   @IsOptional()
   @IsString()

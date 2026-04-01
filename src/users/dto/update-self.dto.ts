@@ -22,4 +22,9 @@ export class UpdateSelfDto {
   @IsString()
   @MinLength(6)
   password?: string;
+
+  @ApiPropertyOptional({ example: '9876543210' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
 }
